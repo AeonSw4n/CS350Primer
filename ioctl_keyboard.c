@@ -2,6 +2,29 @@
 // Created by piotr on 2/16/21.
 //
 
+#include <linux/module.h>
+#include <linux/init.h>
+#include <linux/errno.h> /* error codes */
+#include <linux/proc_fs.h>
+#include <asm/uaccess.h>
+#include <linux/tty.h>
+#include <linux/sched.h>
+
+MODULE_LICENSE("GPL");
+
+static inline unsigned char inb( unsigned short usPort ) {
+
+    unsigned char uch;
+
+    asm volatile( "inb %1,%0" : "=a" (uch) : "Nd" (usPort) );
+    return uch;
+}
+
+static inline void outb( unsigned char uch, unsigned short usPort ) {
+
+    asm volatile( "outb %0,%1" : : "a" (uch), "Nd" (usPort) );
+}
+
 char my_getchar ( void ) {
 
     char c;
@@ -20,15 +43,19 @@ char my_getchar ( void ) {
 
 }
 
-static inline unsigned char inb( unsigned short usPort ) {
+/* 'printk' version that prints to active tty. */
+void my_printk(char *string)
+{
+    struct tty_struct *my_tty;
 
-    unsigned char uch;
+    my_tty = current->signal->tty;
 
-    asm volatile( "inb %1,%0" : "=a" (uch) : "Nd" (usPort) );
-    return uch;
+    if (my_tty != NULL) {
+        (*my_tty->driver->ops->write)(my_tty, string, strlen(string));
+        (*my_tty->driver->ops->write)(my_tty, "\015\012", 2);
+    }
 }
 
-static inline void outb( unsigned char uch, unsigned short usPort ) {
 
-    asm volatile( "outb %0,%1" : : "a" (uch), "Nd" (usPort) );
-}
+module_init(initialization_routine);
+module_exit(cleanup_routine);
