@@ -13,7 +13,7 @@ int main () {
   } ioctl_test;
 
   int fd = open ("/proc/ioctl_test", O_RDONLY);
-
+  printf("%d\n", fd);
   ioctl_test.field1 = 10;
   ioctl_test.field2 = 'a';
 
