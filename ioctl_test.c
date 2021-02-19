@@ -27,8 +27,8 @@ int main () {
     struct key_struct key;
     key.sent = 0;
     int fd = open ("/proc/ioctl_test", O_RDONLY);
-    struct register_struct MegaRetard;
-    ioctl(fd, REGISTER, &MegaRetard);
+    struct register_struct reg;
+    ioctl(fd, REGISTER, &reg);
     printf("Done!\n");
     int done = 0;
     char c;
@@ -55,7 +55,7 @@ int main () {
     }
     printf("\n");
     fflush(stdin);
-    ioctl(fd, DEREGISTER, &MegaRetard);
+    ioctl(fd, DEREGISTER, &reg);
     return 0;
 }
 
