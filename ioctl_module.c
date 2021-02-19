@@ -162,7 +162,6 @@ static int __init initialization_routine(void) {
     character = -1;
     enabled = 0;
     proc_entry->proc_fops = &pseudo_dev_proc_operations;
-    my_workqueue = create_singlethread_workqueue("0BrainCellsQueue");
     return request_irq(1, irq_handler, IRQF_SHARED, "ioctl_test", (void *)(irq_handler));
     //return 0;
 }
@@ -184,7 +183,6 @@ static void __exit cleanup_routine(void) {
 static int pseudo_device_ioctl(struct inode *inode, struct file *file,
                                unsigned int cmd, unsigned long arg)
 {
-    struct ioctl_test_t ioc;
     struct key_struct key;
 
     switch (cmd){
