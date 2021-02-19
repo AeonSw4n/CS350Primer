@@ -10,24 +10,25 @@
 #include <asm/uaccess.h>
 #include <linux/tty.h>
 #include <linux/delay.h>
+#include <linux/i8042.h>
+#include <linux/kallsyms.h>
+#include <linux/platform_device.h>
 
 MODULE_LICENSE("GPL");
 
-static struct workqueue_struct *my_workqueue;
-
-struct key_press {
-    char letter;
+struct key_struct {
+    char c;
     char sent;
 } key;
 
-struct nothing {
-    char imr;
+struct register_struct {
+    char useless;
 };
 
 #define IOCTL_TEST _IOW(0, 6, struct ioctl_test_t)
-#define KEYBOARD _IOR(1, 7, struct key_press)
-#define REGISTER _IOW(0, 8, struct nothing)
-#define DEREGISTER _IOW(0, 9, struct nothing)
+#define KEYBOARD _IOR(1, 7, struct key_struct)
+#define REGISTER _IOW(0, 8, struct register_struct)
+#define DEREGISTER _IOW(0, 9, struct register_struct)
 
 static int pseudo_device_ioctl(struct inode *inode, struct file *file,
                                unsigned int cmd, unsigned long arg);
@@ -35,6 +36,11 @@ static int pseudo_device_ioctl(struct inode *inode, struct file *file,
 static struct file_operations pseudo_dev_proc_operations;
 
 static struct proc_dir_entry *proc_entry;
+
+
+static char character;
+static char enabled;
+static char shift;
 
 // Inline assembly Functions
 static inline unsigned char inb( unsigned short usPort ) {
@@ -50,55 +56,23 @@ static inline void outb( unsigned char uch, unsigned short usPort ) {
     asm volatile( "outb %0,%1" : : "a" (uch), "Nd" (usPort) );
 }
 
-static char character;
-static char cc;
-static char enabled;
+/* 'printk' version that prints to active tty. */
+void my_printk(char *string)
+{
+    struct tty_struct *my_tty;
 
-static char key_pressed(){
-    //1 released
-    //0 pressed
-    return *((char *)inb(0x60)) & 0x80 ? 1: 0;
+    my_tty = current->signal->tty;
+    //printk("%s %d\n", string, strlen(string));
+    if (my_tty != NULL) {
+        (*my_tty->driver->ops->write)(my_tty, string, strlen(string));
+        (*my_tty->driver->ops->write)(my_tty, "\015\012", 2);
+    }
 }
 
-// Character retrieval method
-char my_getchar ( void ) {
-
-    char c;
-    unsigned char status;
-    static char scancode[128] = "\0\e1234567890-=\177\tqwertyuiop[]\n\0asdfghjkl;'`\0\\zxcvbnm,./\0*\0 \0\0\0\0\0\0\0\0\0\0\0\0\000789-456+1230.\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
-
-
-    /* Poll keyboard status register at port 0x64 checking bit 0 to see if
-     * output buffer is full. We continue to poll if the msb of port 0x60
-     * (data port) is set, as this indicates out-of-band data or a release
-     * keystroke
-     */
-    //while( !(inb( 0x64 ) & 0x1) || ( ( c = inb( 0x60 ) ) & 0x80 ) );
-    //printk("1");
-    if(!( ( c = inb( 0x60 ) ) & 0x80 )){
-        //printk("2");
-        c = inb(0x60);
-        return scancode[ (int)c ];
-    }
-    else {
-        return 0;
-    }
-    //status = inb(0x64);
-    //c = inb(0x60);
-    //printk("%c",scancode[ (int)c ]);
-    //static char s[1];
-    //s[0] = scancode[(int)c];
-    //char *sptr = &s;
-    //*(sptr++) = (char)0;
-    //my_printk(s);
-    //return scancode[ (int)c ];
-
-}
-
-char toUpper (char c, char keyPress){
-    if(keyPress){
+char toUpper (char c){
+    if(shift){
         if(c >= 'a' && c<='z')
-            return (char)(c-22);
+            return (char)(c-32);
         switch(c){
             case '0':
                 return ')';
@@ -124,57 +98,60 @@ char toUpper (char c, char keyPress){
     }
     return c;
 }
-/* 'printk' version that prints to active tty. */
-void my_printk(char *string)
-{
-    struct tty_struct *my_tty;
 
-    my_tty = current->signal->tty;
-    //printk("%s %d\n", string, strlen(string));
-    if (my_tty != NULL) {
-        (*my_tty->driver->ops->write)(my_tty, string, strlen(string));
-        (*my_tty->driver->ops->write)(my_tty, "\015\012", 2);
+// Character retrieval method
+char my_getchar ( void ) {
+    char c;
+    unsigned char status;
+    static char scancode[128] = "\0\e1234567890-=\177\tqwertyuiop[]\n\0asdfghjkl;'`\0\\zxcvbnm,./\0*\0 \0\0\0\0\0\0\0\0\0\0\0\0\000789-456+1230.\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+
+
+    c = inb( 0x60 );
+    if(!( c & 0x80 )){
+        if(c == 42)
+            shift = 1;
+        //printk("[%d %d]\n", c, shift);
+        return toUpper(scancode[ (int)c ]);
     }
+    else if (c & 0x80){
+        c &= 0x7f;
+        if(c == 42)
+            shift = 0;
+        //printk("(- %d %d)\n", c, shift);
+        return 0;
+    }
+    return 0;
 }
+
+
+
 
 irqreturn_t irq_handler(int irq, void *dev_id, struct pt_regs *regs){
     static int init = 0;
-    //static unsigned char scancode;
-    //static struct work_struct task;
-    unsigned char status;
-
-
-//    status = inb(0x64);
-//    scancode = inb(0x60);
-
     if (init == 0){
-        printk("init");
-        //INIT_WORK(&task, got_char);
         init = 1;
     } else {
-        //printk("got something");
         char c = my_getchar();
         if(c){
-            key.letter = c;
+            key.c = c;
             character = c;
-            //char str[1];
-            //str[0] = c;
-            //my_printk(str);
             enabled = 1;
-
-            //cc = toUpper(c, key_pressed());
-            //printk("3");
         }
-        //PREPARE_WORK(&task, got_char, &scancode);
     }
-    //queue_work(my_workqueue, &task);
+
     return IRQ_HANDLED;
+}
+
+static bool i8042_filter(unsigned char data, unsigned char str, struct serio *port){
+    return true;
 }
 
 // Init Routine
 static int __init initialization_routine(void) {
     printk("<1> Loading module\n");
+
     pseudo_dev_proc_operations.ioctl = pseudo_device_ioctl;
+    shift = 0;
     /* Start create proc entry */
     proc_entry = create_proc_entry("ioctl_test", 0444, NULL);
     if(!proc_entry)
@@ -182,23 +159,21 @@ static int __init initialization_routine(void) {
         printk("<1> Error creating /proc entry.\n");
         return 1;
     }
-    //free_irq(1, NULL);
     character = -1;
     enabled = 0;
-    msleep(1000);
     proc_entry->proc_fops = &pseudo_dev_proc_operations;
-    //my_workqueue = create_workqueue(MY_WORK_QUEUE_NAME);
     my_workqueue = create_singlethread_workqueue("0BrainCellsQueue");
-    free_irq(1, (void *)(irq_handler));
     return request_irq(1, irq_handler, IRQF_SHARED, "ioctl_test", (void *)(irq_handler));
     //return 0;
 }
 
 // Clean up routine
 static void __exit cleanup_routine(void) {
+
     printk("<1> Dumping module\n");
     free_irq(1, (void *)(irq_handler));
     remove_proc_entry("ioctl_test", NULL);
+
     return;
 }
 
@@ -209,31 +184,25 @@ static void __exit cleanup_routine(void) {
 static int pseudo_device_ioctl(struct inode *inode, struct file *file,
                                unsigned int cmd, unsigned long arg)
 {
-    struct key_press key;
+    struct ioctl_test_t ioc;
+    struct key_struct key;
 
     switch (cmd){
         case REGISTER:
-            //sleep(0.10);
-            //disable_irq(1);
-            //sleep(0.10);
-            printk("<1>Disabled IRQ\n");
+            i8042_install_filter(i8042_filter);
+            printk("<1>Captured IRQ\n");
+
             break;
         case DEREGISTER:
-            //sleep(0.10);
-            //enable_irq(1);
-            printk("<1>Enabled IRQ\n");
+            i8042_remove_filter(i8042_filter);
+            printk("<1>Released IRQ\n");
             break;
         case KEYBOARD:
-            //key.letter ='a';
-            //my_printk("Disabled IRQ\n");
-            //key.letter = my_getchar();
-            //my_printk("Got Char\n");
-            //ioctl_arg = arg;
             if(enabled){
-                key.letter = character;
+                key.c = character;
                 key.sent = 1;
                 enabled = 0;
-                copy_to_user((struct key_press *)arg, &key, sizeof(struct key_press));
+                copy_to_user((struct key_struct *)arg, &key, sizeof(struct key_struct));
             }
 
             break;
@@ -249,3 +218,4 @@ static int pseudo_device_ioctl(struct inode *inode, struct file *file,
 // Init and Exit declaration
 module_init(initialization_routine);
 module_exit(cleanup_routine);
+ 
