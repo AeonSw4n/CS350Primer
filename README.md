@@ -6,7 +6,7 @@ Keshav Maheshwari U46654807
 ##Solution
 To run the script do:
 ```bash
-bash make.sh
+bash run.sh
 ./ioctl_test.o
 ```
 It will print a bunch of warnings (oh well) but it should compile. Typing immediately after invoking `ioctl_test.o` can cause double characters, so user needs to wait about a second (represented by a progress bar "Loading...") before typing. Our solution achieves:
