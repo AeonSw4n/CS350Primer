@@ -17,7 +17,7 @@ It will print a bunch of warnings (oh well) but it should compile. Typing immedi
 * New line support
 * Reactivation of the i8042 driver.
 
-**To exit `ioctl_test`** type backslash character `\ ` (Just a single one). i8042 is disabled using the filter interface from linux/i8042.h.
+**To exit `ioctl_test`** type backslash character `\ ` (Just a single one). i8042 is disabled using the filter interface from linux/i8042.h. Sometimes (hopefully rarely) it might not work, in which case the casual ^C will do the trick.
 
 ##Resources
 * https://elixir.bootlin.com/linux/v2.6.33.2
